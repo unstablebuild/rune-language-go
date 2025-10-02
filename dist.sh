@@ -5,9 +5,10 @@ GIT_HEAD=$(git rev-parse HEAD)
 BLUE_RELEASE_TAR=go.tar.gz
 BLUE_EXEC=bluectl
 OS=$(uname | awk '{print tolower($0)}')
+ARCH=$([ "$(sysctl -n hw.optional.arm64)" -eq 1 ] && echo "arm64" || uname -m)
 BLUE_RELEASE_TAG="$GIT_TAG"
 
-echo "Pushing tarball for OS '$OS'";
+echo "Pushing tarball for OS '$OS' and arch '$ARCH'";
 
 if [[ -z "${BLUE_PGP_KEY}" ]]; then
     echo "BLUE_PGP_KEY is not set. See bluectl release upload -h for help."
@@ -26,6 +27,7 @@ blue_release_dist() {
 	echo "uploading $BLUE_RELEASE_TAG"
 	$BLUE_EXEC release upload \
 		-d target-os=$OS \
+		-d target-arch=$ARCH \
 		-d git-remote-url=$GIT_REMOTE_URL \
 		-d git-author-email=$GIT_AUTHOR_EMAIL \
 		-d git-tag=$GIT_TAG -d git-head=$GIT_HEAD \
