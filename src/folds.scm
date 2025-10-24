@@ -1,8 +1,5 @@
 [
   (const_declaration)
-  (expression_case)
-  (default_case)
-  (type_case)
   (for_statement)
   (func_literal)
   (function_declaration)
