@@ -15,7 +15,7 @@ $(LIB): $(SRC)
 	cp nvim-treesitter/queries/go/locals.scm pkg/lib
 	cp src/folds.scm pkg/lib
 	cd go/src && ./make.bash && cp ../bin/** ../../pkg/bin
-	cd tools/gopls && GOBIN=$(PWD)/pkg/bin GOROOT=../../go ../../go/bin/go install .
+	cd tools/gopls && GOBIN=$(PWD)/pkg/bin GOROOT=$(PWD)/go $(PWD)/pkg/bin/go install .
 	cd tools && GOBIN=$(PWD)/pkg/bin GOROOT=../go ../go/bin/go install ./cmd/goimports
 
 $(TAR): $(LIB)
