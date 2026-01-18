@@ -12,6 +12,7 @@ $(LIB): $(SRC)
 	cp tree-sitter-go/parser.so pkg/lib/tree-sitter.so
 	cp tree-sitter-go/queries/tags.scm tree-sitter-go/queries/highlights.scm pkg/lib
 	cp nvim-treesitter/queries/go/indents.scm pkg/lib
+	cp nvim-treesitter/queries/go/locals.scm pkg/lib
 	cp src/folds.scm pkg/lib
 	cd go/src && ./make.bash && cp ../bin/** ../../pkg/bin
 	cd tools/gopls && GOBIN=$(PWD)/pkg/bin GOROOT=../../go ../../go/bin/go install .
