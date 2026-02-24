@@ -7,3 +7,6 @@
 [submodule "nvim-treesitter"]
 	path = nvim-treesitter
 	url = git@github.com:nvim-treesitter/nvim-treesitter.git
+[submodule "delve"]
+	path = delve
+	url = git@github.com:go-delve/delve.git
