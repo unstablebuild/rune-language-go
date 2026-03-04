@@ -22,7 +22,7 @@ $(LIB): $(SRC)
 	cp src/folds.scm pkg/lib
 	cd tools/gopls && GOBIN=$(PWD)/pkg/bin GOROOT=$(PWD)/go $(PWD)/pkg/bin/go install .
 	cd tools && GOBIN=$(PWD)/pkg/bin GOROOT=../go ../go/bin/go install ./cmd/goimports
-	cp settings.json pkg
+	cp config.yaml pkg
 	cd delve && GOBIN=$(PWD)/pkg/bin GOROOT=$(PWD)/go $(PWD)/go/bin/go install ./cmd/dlv
 	cd blue && GOBIN=$(PWD)/pkg/bin GOROOT=$(PWD)/go $(PWD)/go/bin/go install ./cmd/extension_go
 

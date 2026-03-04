@@ -1,5 +1,0 @@
-{
-	"env": {
-		"GOROOT": "$RUNE_DATADIR/pkg/$RUNE_PKG_ID/$RUNE_PKG_VERSION"
-	}
-}
