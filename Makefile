@@ -24,6 +24,7 @@ $(LIB): $(SRC)
 	cd tools && GOBIN=$(PWD)/pkg/bin GOROOT=../go ../go/bin/go install ./cmd/goimports
 	cp settings.json pkg
 	cd delve && GOBIN=$(PWD)/pkg/bin GOROOT=$(PWD)/go $(PWD)/go/bin/go install ./cmd/dlv
+	cd blue && GOBIN=$(PWD)/pkg/bin GOROOT=$(PWD)/go $(PWD)/go/bin/go install ./cmd/extension_go
 
 $(TAR): $(LIB)
 	cd pkg && tar -czvf ../go.tar.gz .
