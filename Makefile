@@ -43,7 +43,7 @@ $(NOTARIZE_ZIP): sign
 	zip $(NOTARIZE_ZIP) pkg/bin/go pkg/bin/gopls pkg/bin/goimports pkg/bin/dlv pkg/bin/extension_go pkg/lib/tree-sitter.so
 
 notarize: $(NOTARIZE_ZIP)
-	xcrun notarytool submit $(NOTARIZE_ZIP) --keychain-profile "$(NOTARY_PROFILE)" --wait
+	xcrun notarytool submit $(NOTARIZE_ZIP) --keychain-profile "$(NOTARY_PROFILE)"
 else
 sign: $(LIB)
 	@echo "Skipping codesign (not on macOS)"
