@@ -1,13 +1,13 @@
 SRC=go tools tree-sitter-go
 LIB=$(wildcard pkg/**/*) $(wildcard pkg/*) pkg
-TAR=go.tar.gz
+ZIP=go.zip
 CC=gcc
 GOVERSION=1.26.1
 CODESIGN_IDENTITY=Developer ID Application: Unstable Build, LLC. (YYZRWD888J)
 NOTARY_PROFILE=notary-profile
 
 .PHONY: dist clean sign notarize notary-credentials
-default: $(TAR)
+default: $(ZIP)
 
 go:
 	wget -O go-src.tar.gz https://go.dev/dl/go$(GOVERSION).darwin-arm64.tar.gz
@@ -36,11 +36,11 @@ sign: $(LIB)
 	codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" pkg/bin/extension_go
 	codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" pkg/lib/tree-sitter.so
 
-$(TAR): $(LIB) sign
-	cd pkg && tar -czvf ../go.tar.gz .
+$(ZIP): $(LIB) sign
+	cd pkg && zip -r ../$(ZIP) .
 
-notarize: $(TAR)
-	xcrun notarytool submit $(TAR) --keychain-profile "$(NOTARY_PROFILE)" --wait
+notarize: $(ZIP)
+	xcrun notarytool submit $(ZIP) --keychain-profile "$(NOTARY_PROFILE)" --wait
 
 dist: notarize
 	@ ./dist.sh
@@ -50,6 +50,6 @@ notary-credentials:
 
 clean:
 	rm -rf go
-	rm -rf $(TAR)
+	rm -rf $(ZIP)
 	rm -rf pkg/
 	rm -rf go/bin/
