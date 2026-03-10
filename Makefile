@@ -1,13 +1,15 @@
 SRC=go tools tree-sitter-go
 LIB=$(wildcard pkg/**/*) $(wildcard pkg/*) pkg
-ZIP=go.zip
+TAR=go.tar.gz
+NOTARIZE_ZIP=go-notarize.zip
 CC=gcc
 GOVERSION=1.26.1
 CODESIGN_IDENTITY=Developer ID Application: Unstable Build, LLC. (YYZRWD888J)
 NOTARY_PROFILE=notary-profile
+UNAME=$(shell uname)
 
 .PHONY: dist clean sign notarize notary-credentials
-default: $(ZIP)
+default: $(TAR)
 
 go:
 	wget -O go-src.tar.gz https://go.dev/dl/go$(GOVERSION).darwin-arm64.tar.gz
@@ -28,6 +30,7 @@ $(LIB): $(SRC)
 	cd delve && GOBIN=$(PWD)/pkg/bin GOROOT=$(PWD)/go $(PWD)/go/bin/go install ./cmd/dlv
 	cd blue && GOBIN=$(PWD)/pkg/bin GOROOT=$(PWD)/go $(PWD)/go/bin/go install ./cmd/extension_go
 
+ifeq ($(UNAME),Darwin)
 sign: $(LIB)
 	codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" pkg/bin/go
 	codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" pkg/bin/gopls
@@ -36,13 +39,23 @@ sign: $(LIB)
 	codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" pkg/bin/extension_go
 	codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" pkg/lib/tree-sitter.so
 
-$(ZIP): $(LIB) sign
-	cd pkg && zip -r ../$(ZIP) .
+$(NOTARIZE_ZIP): sign
+	zip $(NOTARIZE_ZIP) pkg/bin/go pkg/bin/gopls pkg/bin/goimports pkg/bin/dlv pkg/bin/extension_go pkg/lib/tree-sitter.so
 
-notarize: $(ZIP)
-	xcrun notarytool submit $(ZIP) --keychain-profile "$(NOTARY_PROFILE)" --wait
+notarize: $(NOTARIZE_ZIP)
+	xcrun notarytool submit $(NOTARIZE_ZIP) --keychain-profile "$(NOTARY_PROFILE)" --wait
+else
+sign: $(LIB)
+	@echo "Skipping codesign (not on macOS)"
 
-dist: notarize
+notarize: sign
+	@echo "Skipping notarization (not on macOS)"
+endif
+
+$(TAR): $(LIB) sign
+	cd pkg && tar -czvf ../$(TAR) .
+
+dist: notarize $(TAR)
 	@ ./dist.sh
 
 notary-credentials:
@@ -50,6 +63,7 @@ notary-credentials:
 
 clean:
 	rm -rf go
-	rm -rf $(ZIP)
+	rm -rf $(TAR)
+	rm -rf $(NOTARIZE_ZIP)
 	rm -rf pkg/
 	rm -rf go/bin/
