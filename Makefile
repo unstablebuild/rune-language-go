@@ -55,7 +55,7 @@ endif
 $(TAR): $(LIB) sign
 	cd pkg && tar -czvf ../$(TAR) .
 
-dist: notarize $(TAR)
+dist: clean notarize $(TAR)
 	@ ./dist.sh
 
 notary-credentials:
