@@ -2,7 +2,7 @@ SRC=go tools tree-sitter-go
 LIB=$(wildcard pkg/**/*) $(wildcard pkg/*) pkg
 TAR=go.tar.gz
 CC=gcc
-GOVERSION=1.26.0
+GOVERSION=1.26.1
 
 .PHONY: dist clean
 default: $(TAR)
