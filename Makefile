@@ -3,8 +3,10 @@ LIB=$(wildcard pkg/**/*) $(wildcard pkg/*) pkg
 TAR=go.tar.gz
 CC=gcc
 GOVERSION=1.26.1
+CODESIGN_IDENTITY=Developer ID Application: Unstable Build, LLC. (YYZRWD888J)
+NOTARY_PROFILE=notary-profile
 
-.PHONY: dist clean
+.PHONY: dist clean sign notarize notary-credentials
 default: $(TAR)
 
 go:
@@ -26,11 +28,25 @@ $(LIB): $(SRC)
 	cd delve && GOBIN=$(PWD)/pkg/bin GOROOT=$(PWD)/go $(PWD)/go/bin/go install ./cmd/dlv
 	cd blue && GOBIN=$(PWD)/pkg/bin GOROOT=$(PWD)/go $(PWD)/go/bin/go install ./cmd/extension_go
 
-$(TAR): $(LIB)
+sign: $(LIB)
+	codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" pkg/bin/go
+	codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" pkg/bin/gopls
+	codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" pkg/bin/goimports
+	codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" pkg/bin/dlv
+	codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" pkg/bin/extension_go
+	codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" pkg/lib/tree-sitter.so
+
+$(TAR): $(LIB) sign
 	cd pkg && tar -czvf ../go.tar.gz .
 
-dist: $(TAR)
+notarize: $(TAR)
+	xcrun notarytool submit $(TAR) --keychain-profile "$(NOTARY_PROFILE)" --wait
+
+dist: notarize
 	@ ./dist.sh
+
+notary-credentials:
+	xcrun notarytool store-credentials "$(NOTARY_PROFILE)" --team-id "YYZRWD888J"
 
 clean:
 	rm -rf go
