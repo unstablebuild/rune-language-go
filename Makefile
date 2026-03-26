@@ -1,4 +1,4 @@
-SRC=go tools tree-sitter-go
+SRC=go tools tree-sitter-go rune
 LIB=$(wildcard pkg/**/*) $(wildcard pkg/*) pkg
 TAR=go.tar.gz
 NOTARIZE_ZIP=go-notarize.zip
@@ -28,7 +28,7 @@ $(LIB): $(SRC)
 	cd tools && GOBIN=$(PWD)/pkg/bin GOROOT=../go ../go/bin/go install ./cmd/goimports
 	cp config.yaml pkg
 	cd delve && GOBIN=$(PWD)/pkg/bin GOROOT=$(PWD)/go $(PWD)/go/bin/go install ./cmd/dlv
-	cd blue && GOBIN=$(PWD)/pkg/bin GOROOT=$(PWD)/go $(PWD)/go/bin/go install ./cmd/extension_go
+	cd rune && GOBIN=$(PWD)/pkg/bin GOROOT=$(PWD)/go $(PWD)/go/bin/go install ./cmd/extension_go
 
 ifeq ($(UNAME),Darwin)
 sign: $(LIB)
