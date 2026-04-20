@@ -4,3 +4,13 @@ gui:
 extensions:
   go:
     path: '$RUNE_DATADIR/bin/extension_go'
+lsp:
+  icons:
+    inline: "󰁔"
+    escape: "󰁝"
+    bounds: "󰅪"
+    nilcheck: "∅"
+    compiler: "⚙"
+editor:
+  icons:
+    .go: 󰟓
