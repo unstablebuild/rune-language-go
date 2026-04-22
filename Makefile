@@ -3,6 +3,7 @@ LIB=$(wildcard pkg/**/*) $(wildcard pkg/*) pkg
 TAR=go.tar.gz
 NOTARIZE_ZIP=go-notarize.zip
 CC=gcc
+GTAR=gtar
 GOVERSION=1.26.2
 CODESIGN_IDENTITY=Developer ID Application: Unstable Build, LLC. (YYZRWD888J)
 NOTARY_PROFILE=notary-profile
@@ -53,7 +54,7 @@ notarize: sign
 endif
 
 $(TAR): $(LIB) sign
-	cd pkg && tar -czvf ../$(TAR) .
+	cd pkg && $(GTAR) --no-xattrs --no-acls -czvf ../$(TAR) .
 
 dist: clean notarize $(TAR)
 	@ ./dist.sh
