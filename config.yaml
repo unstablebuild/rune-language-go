@@ -14,3 +14,10 @@ lsp:
 editor:
   icons:
     .go: 󰟓
+  comments:
+    go:
+      line:
+        - "//"
+      block:
+        - "/*"
+        - "*/"
