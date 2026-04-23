@@ -4,6 +4,10 @@ gui:
 extensions:
   go:
     path: '$RUNE_DATADIR/bin/extension_go'
+debugger:
+  go:
+    command: "dlv dap --listen={addr}"
+    adapter_id: "dlv-dap"
 lsp:
   icons:
     inline: "󰁔"
