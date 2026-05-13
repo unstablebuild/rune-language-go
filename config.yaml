@@ -4,6 +4,12 @@ gui:
 extensions:
   go:
     path: '$RUNE_DATADIR/bin/extension_go'
+    config:
+      lsp_path: ""
+      addr: localhost:6060
+      logfile: /Users/ernestrc/.rune/logs/lsp/gopls.log
+      # rpc_trace: true
+      # trace: verbose
 debugger:
   go:
     command: "dlv dap --listen={addr}"
