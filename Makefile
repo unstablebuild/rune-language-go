@@ -9,7 +9,15 @@ CODESIGN_IDENTITY=Developer ID Application: Unstable Build, LLC. (YYZRWD888J)
 NOTARY_PROFILE=notary-profile
 UNAME=$(shell uname)
 
-.PHONY: dist clean sign notarize notary-credentials
+BLUECTL_CONFIG_ROOT := $(abspath deploy/bluectl)
+
+DIST_TARGETS := \
+	dist-prod-darwin-arm64 dist-prod-darwin-amd64 \
+	dist-prod-linux-arm64  dist-prod-linux-amd64  \
+	dist-staging-darwin-arm64 dist-staging-darwin-amd64 \
+	dist-staging-linux-arm64  dist-staging-linux-amd64
+
+.PHONY: $(DIST_TARGETS) clean sign notarize notary-credentials
 default: $(TAR)
 
 go:
@@ -56,8 +64,15 @@ endif
 $(TAR): $(LIB) sign
 	cd pkg && $(GTAR) --no-xattrs --no-acls -czvf ../$(TAR) .
 
-dist: clean notarize $(TAR)
-	@ ./dist.sh
+# dist-<env>-<os>-<arch>: build, sign/notarize, and upload to the
+# bluectl project-id pinned by deploy/bluectl/<env>/<os>-<arch>/config.
+# Pattern stem is <env>-<os>-<arch>, e.g. "prod-darwin-arm64".
+$(DIST_TARGETS): dist-%: clean notarize $(TAR)
+	@env=$$(echo $* | cut -d- -f1); \
+	 os=$$(echo $*  | cut -d- -f2); \
+	 arch=$$(echo $* | cut -d- -f3); \
+	 BLUECTL_CONFIG_DIR=$(BLUECTL_CONFIG_ROOT)/$$env/$$os-$$arch \
+	 BLUE_TARGET_OS=$$os BLUE_TARGET_ARCH=$$arch ./dist.sh
 
 notary-credentials:
 	xcrun notarytool store-credentials "$(NOTARY_PROFILE)" --team-id "YYZRWD888J"

@@ -3,9 +3,10 @@ GIT_AUTHOR_EMAIL=$(git log -1 --pretty=format:'%ae')
 GIT_TAG=$(git describe --tags --dirty)
 GIT_HEAD=$(git rev-parse HEAD)
 BLUE_RELEASE_TAR=go.tar.gz
-BLUE_EXEC=bluectl
-OS=$(uname | awk '{print tolower($0)}')
-ARCH=$([ "$(sysctl -n hw.optional.arm64)" -eq 1 ] && echo "arm64" || uname -m)
+: "${BLUECTL_CONFIG_DIR:?BLUECTL_CONFIG_DIR is not set. Use the dist-<env>-<os>-<arch> make targets (e.g. dist-prod-darwin-arm64) so the bluectl project-id is pinned to the right environment.}"
+BLUE_EXEC=(bluectl -c "$BLUECTL_CONFIG_DIR")
+OS="${BLUE_TARGET_OS:-$(uname | awk '{print tolower($0)}')}"
+ARCH="${BLUE_TARGET_ARCH:-$([ "$(sysctl -n hw.optional.arm64)" -eq 1 ] && echo "arm64" || uname -m)}"
 BLUE_RELEASE_TAG="$GIT_TAG"
 
 echo "Pushing tarball for OS '$OS' and arch '$ARCH'";
@@ -25,7 +26,7 @@ blue_release_dist() {
 	printf "\n$GIT_LOG\n";
 
 	echo "uploading $BLUE_RELEASE_TAG"
-	$BLUE_EXEC release upload \
+	"${BLUE_EXEC[@]}" release upload \
 		-d target-os=$OS \
 		-d target-arch=$ARCH \
 		-d git-remote-url=$GIT_REMOTE_URL \
