@@ -6,7 +6,11 @@ BLUE_RELEASE_TAR=go.tar.gz
 : "${BLUECTL_CONFIG_DIR:?BLUECTL_CONFIG_DIR is not set. Use the dist-<env>-<os>-<arch> make targets (e.g. dist-prod-darwin-arm64) so the bluectl project-id is pinned to the right environment.}"
 BLUE_EXEC=(bluectl -c "$BLUECTL_CONFIG_DIR")
 OS="${BLUE_TARGET_OS:-$(uname | awk '{print tolower($0)}')}"
-ARCH="${BLUE_TARGET_ARCH:-$([ "$(sysctl -n hw.optional.arm64)" -eq 1 ] && echo "arm64" || uname -m)}"
+ARCH="${BLUE_TARGET_ARCH:-$([ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ] && echo "arm64" || uname -m)}"
+case "$ARCH" in
+	x86_64) ARCH=amd64 ;;
+	aarch64) ARCH=arm64 ;;
+esac
 BLUE_RELEASE_TAG="$GIT_TAG"
 
 echo "Pushing tarball for OS '$OS' and arch '$ARCH'";
