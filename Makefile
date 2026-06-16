@@ -2,11 +2,17 @@ SRC=go tools tree-sitter-go rune
 LIB=$(wildcard pkg/**/*) $(wildcard pkg/*) pkg
 TAR=go.tar.gz
 NOTARIZE_ZIP=go-notarize.zip
-GTAR=gtar
 GOVERSION=1.26.4
 CODESIGN_IDENTITY=Developer ID Application: Unstable Build, LLC. (YYZRWD888J)
 NOTARY_PROFILE=notary-profile
 UNAME=$(shell uname)
+
+# GNU tar is named "gtar" on macOS (Homebrew) but is the default "tar" on Linux.
+ifeq ($(UNAME),Darwin)
+GTAR=gtar
+else
+GTAR=tar
+endif
 
 # Releases are always built on a machine running the target OS (Linux releases
 # on Linux, macOS releases on macOS); only the architecture may be cross
