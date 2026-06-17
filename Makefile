@@ -14,13 +14,14 @@ else
 GTAR=tar
 endif
 
-# Releases are always built on a machine running the target OS (Linux releases
-# on Linux, macOS releases on macOS); only the architecture may be cross
-# compiled. TARGET_OS therefore always equals the host OS, while TARGET_ARCH
-# may differ to produce the other arch for the same OS.
 HOST_OS=$(shell uname | tr '[:upper:]' '[:lower:]')
 HOST_ARCH=$(shell uname -m | sed -e 's/^x86_64$$/amd64/' -e 's/^aarch64$$/arm64/')
-TARGET_OS=$(HOST_OS)
+# Releases are always built on a machine running the target OS (Linux releases
+# on Linux, macOS releases on macOS); only the architecture may be cross
+# compiled. TARGET_OS defaults to the host OS but may be set explicitly so a
+# mismatched cross-OS build (e.g. TARGET_OS=linux on a darwin host) is rejected
+# by check-host-os instead of silently bundling the wrong toolchain.
+TARGET_OS?=$(HOST_OS)
 TARGET_ARCH?=$(HOST_ARCH)
 
 # Cross is non-empty when building for a different arch than the host.
@@ -38,6 +39,18 @@ GNU_TRIPLE_arm64=aarch64-linux-gnu
 CC=$(if $(CROSS),$(GNU_TRIPLE_$(TARGET_ARCH))-gcc,gcc)
 
 BLUECTL_CONFIG_ROOT := $(abspath deploy/bluectl)
+
+# The bundled Go toolchain is OS-specific and cannot be cross-compiled across
+# operating systems: only the architecture may be cross compiled. Building a
+# Linux package on macOS (or vice versa) silently bundles the host OS toolchain,
+# which then fails on the target with a "go tool version" mismatch. Guard every
+# package build, not just the dist-* targets.
+.PHONY: check-host-os
+check-host-os:
+	@if [ "$(TARGET_OS)" != "$(HOST_OS)" ]; then \
+	  echo "error: cannot build a '$(TARGET_OS)' package on a '$(HOST_OS)' host; the Go toolchain is OS-specific. Build $(TARGET_OS) releases on a $(TARGET_OS) machine." >&2; \
+	  exit 1; \
+	fi
 
 DIST_TARGETS := \
 	dist-prod-darwin-arm64 dist-prod-darwin-amd64 \
@@ -57,7 +70,7 @@ go:
 
 # Target toolchain (target arch): bundled into the release unmodified. Only
 # downloaded when cross-arch building; for native builds we bundle go/ directly.
-go-target: | go
+go-target: | go check-host-os
 ifeq ($(CROSS),)
 	cp -R go/ go-target
 else
@@ -67,7 +80,7 @@ else
 	rm -f go-target.tar.gz
 endif
 
-$(LIB): $(SRC) go-target
+$(LIB): $(SRC) go-target | check-host-os
 	cp -R go-target/ pkg
 	@mkdir -p pkg/bin pkg/lib
 ifeq ($(HOST_OS),darwin)
@@ -129,7 +142,7 @@ $(DIST_TARGETS): dist-%:
 	   exit 1; \
 	 fi; \
 	 $(MAKE) clean; \
-	 $(MAKE) notarize $(TAR) TARGET_ARCH=$$arch; \
+	 $(MAKE) notarize $(TAR) TARGET_OS=$$os TARGET_ARCH=$$arch; \
 	 BLUECTL_CONFIG_DIR=$(BLUECTL_CONFIG_ROOT)/$$env/$$os-$$arch \
 	 BLUE_TARGET_OS=$$os BLUE_TARGET_ARCH=$$arch ./dist.sh
 
