@@ -14,6 +14,11 @@ debugger:
   go:
     command: "dlv dap --listen={addr}"
     adapter_id: "dlv-dap"
+    launch:
+      mode: "debug"
+      outputMode: "remote"
+    attach:
+      mode: "local"
 lsp:
   icons:
     inline: "󰁔"
