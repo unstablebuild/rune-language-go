@@ -5,6 +5,12 @@ gui:
     GOBIN: '$RUNE_DATADIR/bin'
     GOMODCACHE: '$RUNE_DATADIR/go/pkg/mod'
     GOCACHE: '$RUNE_DATADIR/go/cache'
+    # GOROOT pins the bundled toolchain. GOTOOLCHAIN=auto lets the `go`
+    # command honor a repo's `toolchain goX.Y.Z` directive by downloading
+    # the required version (cached under our GOPATH) instead of failing.
+    # Without this, a user's exported GOTOOLCHAIN=local would force the
+    # bundled version onto every repo and break ones that need another.
+    GOTOOLCHAIN: 'auto'
 extensions:
   go:
     path: '$RUNE_DATADIR/bin/extension_go'
