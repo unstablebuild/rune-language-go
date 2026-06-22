@@ -1,6 +1,6 @@
 gui:
   env:
-    GOROOT: '$RUNE_DATADIR/pkg/$RUNE_PKG_ID/$RUNE_PKG_VERSION'
+    GOROOT: '$RUNE_DATADIR/lib/$RUNE_PKG_ID'
     GOPATH: '$RUNE_DATADIR/go'
     GOBIN: '$RUNE_DATADIR/bin'
     GOMODCACHE: '$RUNE_DATADIR/go/pkg/mod'
