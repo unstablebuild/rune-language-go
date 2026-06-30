@@ -46,3 +46,6 @@ editor:
       block:
         - "/*"
         - "*/"
+command:
+  key_bindings:
+    <a-m>: go organize-imports
