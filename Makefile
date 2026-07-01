@@ -52,6 +52,13 @@ check-host-os:
 	  exit 1; \
 	fi
 
+# check-release-tag aborts before any build runs when HEAD does not carry a
+# publishable release tag (clean, canonical semver, actually tagged). Shared by
+# every dist-* target so a "-dirty" or untagged build can never be uploaded.
+.PHONY: check-release-tag
+check-release-tag:
+	@./check-release-tag.sh
+
 DIST_TARGETS := \
 	dist-prod-darwin-arm64 dist-prod-darwin-amd64 \
 	dist-prod-linux-arm64  dist-prod-linux-amd64  \
@@ -133,7 +140,9 @@ $(TAR): $(LIB) sign
 # macOS releases on macOS. Only the architecture may be cross compiled. The
 # build is driven through a recursive make so TARGET_ARCH is set before the
 # $(TAR) prerequisite chain is evaluated.
-$(DIST_TARGETS): dist-%:
+# check-release-tag is listed first so the tag is validated before any build,
+# sign, or notarize work runs.
+$(DIST_TARGETS): dist-%: check-release-tag
 	@env=$$(echo $* | cut -d- -f1); \
 	 os=$$(echo $*  | cut -d- -f2); \
 	 arch=$$(echo $* | cut -d- -f3); \
