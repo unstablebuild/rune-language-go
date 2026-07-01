@@ -40,6 +40,11 @@ CC=$(if $(CROSS),$(GNU_TRIPLE_$(TARGET_ARCH))-gcc,gcc)
 
 BLUECTL_CONFIG_ROOT := $(abspath deploy/bluectl)
 
+# Docker cross-compile: builds the full pkg/ bundle inside Docker for a target
+# arch, so no host GNU cross toolchain is required. Linux only.
+DOCKER_CROSS_DOCKERFILE := deploy/go-language/Dockerfile
+CROSS_OUTPUT_DIR := $(abspath target)
+
 # The bundled Go toolchain is OS-specific and cannot be cross-compiled across
 # operating systems: only the architecture may be cross compiled. Building a
 # Linux package on macOS (or vice versa) silently bundles the host OS toolchain,
@@ -65,7 +70,13 @@ DIST_TARGETS := \
 	dist-staging-darwin-arm64 dist-staging-darwin-amd64 \
 	dist-staging-linux-arm64  dist-staging-linux-amd64
 
-.PHONY: $(DIST_TARGETS) clean sign notarize notary-credentials
+# Docker cross-compile dist targets (Linux only): build the bundle inside
+# Docker for a possibly-different arch, then upload via dist.sh.
+CROSS_DIST_TARGETS := \
+	dist-prod-linux-arm64-cross  dist-prod-linux-amd64-cross \
+	dist-staging-linux-arm64-cross dist-staging-linux-amd64-cross
+
+.PHONY: $(DIST_TARGETS) $(CROSS_DIST_TARGETS) linux-cross-compile clean sign notarize notary-credentials
 default: $(TAR)
 
 # Build toolchain (host os/arch): runs the compiler. Cross-arch builds set
@@ -155,6 +166,40 @@ $(DIST_TARGETS): dist-%: check-release-tag
 	 BLUECTL_CONFIG_DIR=$(BLUECTL_CONFIG_ROOT)/$$env/$$os-$$arch \
 	 BLUE_TARGET_OS=$$os BLUE_TARGET_ARCH=$$arch ./dist.sh
 
+# linux-cross-compile builds the full pkg/ bundle inside Docker for TARGET_ARCH,
+# dropping go.tar.gz into $(CROSS_OUTPUT_DIR). No host GNU cross toolchain is
+# required. GIT_SSH_KEY must be exported for private Go module access.
+linux-cross-compile:
+	@rm -rf $(CROSS_OUTPUT_DIR)
+	@mkdir -p $(CROSS_OUTPUT_DIR)
+	docker buildx build --rm \
+		-f $(DOCKER_CROSS_DOCKERFILE) \
+		--platform linux/$(TARGET_ARCH) \
+		--build-arg GOVERSION=$(GOVERSION) \
+		--build-arg GIT_SSH_KEY="$$GIT_SSH_KEY" \
+		--build-arg RELEASE_TAR=$(TAR) \
+		--output type=local,dest=$(CROSS_OUTPUT_DIR) \
+		.
+
+# dist-<env>-linux-<arch>-cross mirror the native dist-<env>-linux-<arch>
+# targets but build the bundle through the Docker cross-compile path instead of
+# the host toolchain. Linux only; darwin cannot be built in Linux Docker.
+# check-release-tag is listed first so the tag is validated before any Docker
+# cross-compile work runs.
+$(CROSS_DIST_TARGETS): dist-%-cross: check-release-tag
+	@env=$$(echo $*  | cut -d- -f1); \
+	 os=$$(echo $*   | cut -d- -f2); \
+	 arch=$$(echo $* | cut -d- -f3); \
+	 if [ "$$os" != "linux" ]; then \
+	   echo "error: $@ is Linux-only (docker cross); use dist-$$env-$$os-$$arch for $$os" >&2; \
+	   exit 1; \
+	 fi; \
+	 $(MAKE) clean; \
+	 $(MAKE) linux-cross-compile TARGET_OS=linux TARGET_ARCH=$$arch; \
+	 BLUECTL_CONFIG_DIR=$(BLUECTL_CONFIG_ROOT)/$$env/$$os-$$arch \
+	 BLUE_TARGET_OS=linux BLUE_TARGET_ARCH=$$arch \
+	 BLUE_RELEASE_TAR=$(CROSS_OUTPUT_DIR)/$(TAR) ./dist.sh
+
 notary-credentials:
 	xcrun notarytool store-credentials "$(NOTARY_PROFILE)" --team-id "YYZRWD888J"
 
@@ -163,5 +208,6 @@ clean:
 	rm -rf go-target
 	rm -rf $(TAR)
 	rm -rf $(NOTARIZE_ZIP)
+	rm -rf $(CROSS_OUTPUT_DIR)
 	rm -rf pkg/
 	rm -rf go/bin/

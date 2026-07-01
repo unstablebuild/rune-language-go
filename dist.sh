@@ -2,7 +2,7 @@ GIT_REMOTE_URL=$(git remote get-url origin)
 GIT_AUTHOR_EMAIL=$(git log -1 --pretty=format:'%ae')
 GIT_TAG=$(git describe --tags --dirty)
 GIT_HEAD=$(git rev-parse HEAD)
-BLUE_RELEASE_TAR=go.tar.gz
+BLUE_RELEASE_TAR="${BLUE_RELEASE_TAR:-go.tar.gz}"
 : "${BLUECTL_CONFIG_DIR:?BLUECTL_CONFIG_DIR is not set. Use the dist-<env>-<os>-<arch> make targets (e.g. dist-prod-darwin-arm64) so the bluectl project-id is pinned to the right environment.}"
 BLUE_EXEC=(bluectl -c "$BLUECTL_CONFIG_DIR")
 OS="${BLUE_TARGET_OS:-$(uname | awk '{print tolower($0)}')}"
