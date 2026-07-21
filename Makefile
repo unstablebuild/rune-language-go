@@ -38,6 +38,21 @@ GNU_TRIPLE_amd64=x86_64-linux-gnu
 GNU_TRIPLE_arm64=aarch64-linux-gnu
 CC=$(if $(CROSS),$(GNU_TRIPLE_$(TARGET_ARCH))-gcc,gcc)
 
+# extension_go imports ide/syntax and go-tree-sitter, so it must be built with
+# CGO enabled even for cross-arch releases (CGO_ENABLED=0 leaves tree-sitter
+# Parser/Tree/Query/Language symbols undefined). On macOS, clang cross-compiles
+# natively via -arch, so a same-OS cross-arch build only needs the target clang
+# arch flag. On Linux, use the matching GNU cross toolchain.
+CLANG_ARCH_amd64=x86_64
+CLANG_ARCH_arm64=arm64
+ifeq ($(HOST_OS),darwin)
+EXT_CGO_ENABLED=1
+EXT_CC=clang $(if $(CROSS),-arch $(CLANG_ARCH_$(TARGET_ARCH)),)
+else
+EXT_CGO_ENABLED=1
+EXT_CC=$(CC)
+endif
+
 BLUECTL_CONFIG_ROOT := $(abspath deploy/bluectl)
 
 # Docker cross-compile: builds the full pkg/ bundle inside Docker for a target
@@ -115,7 +130,7 @@ endif
 	cd tools && CGO_ENABLED=$(CGO_ENABLED) GOOS=$(TARGET_OS) GOARCH=$(TARGET_ARCH) GOROOT=../go ../go/bin/go build -o $(PWD)/pkg/bin/goimports ./cmd/goimports
 	cp config.yaml pkg
 	cd delve && CGO_ENABLED=$(CGO_ENABLED) GOOS=$(TARGET_OS) GOARCH=$(TARGET_ARCH) GOROOT=$(PWD)/go $(PWD)/go/bin/go build -o $(PWD)/pkg/bin/dlv ./cmd/dlv
-	cd rune && CGO_ENABLED=$(CGO_ENABLED) GOOS=$(TARGET_OS) GOARCH=$(TARGET_ARCH) GOROOT=$(PWD)/go $(PWD)/go/bin/go build -o $(PWD)/pkg/bin/extension_go ./cmd/extension_go
+	cd rune && CGO_ENABLED=$(EXT_CGO_ENABLED) CC="$(EXT_CC)" GOOS=$(TARGET_OS) GOARCH=$(TARGET_ARCH) GOROOT=$(PWD)/go $(PWD)/go/bin/go build -o $(PWD)/pkg/bin/extension_go ./cmd/extension_go
 
 ifeq ($(UNAME),Darwin)
 sign: $(LIB)
