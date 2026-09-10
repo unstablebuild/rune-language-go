@@ -12,4 +12,4 @@
 	url = git@github.com:go-delve/delve.git
 [submodule "rune"]
 	path = rune
-	url = git@git.unstable.build:unstablebuild/rune.git
+	url = git@github.com:unstablebuild/rune.git
