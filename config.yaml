@@ -16,9 +16,9 @@ extensions:
     path: '$RUNE_DATADIR/bin/extension_go'
     config:
       lsp_path: ""
-      debug:
+      #debug:
         # addr: :0
-        logfile: /Users/ernestrc/.rune/logs/lsp/gopls.log
+        # logfile: /path/to/gopls.log
         # rpc_trace: true
         # trace: verbose
 debugger:
