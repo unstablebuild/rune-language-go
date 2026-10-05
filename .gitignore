@@ -4,4 +4,3 @@
 *.rswp
 pkg/
 go/
-go-target/

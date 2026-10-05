@@ -1,228 +1,108 @@
-SRC=go tools tree-sitter-go rune
-LIB=$(wildcard pkg/**/*) $(wildcard pkg/*) pkg
 TAR=go.tar.gz
-NOTARIZE_ZIP=go-notarize.zip
 GOVERSION=1.27.1
-CODESIGN_IDENTITY=Developer ID Application: Unstable Build, LLC. (YYZRWD888J)
-NOTARY_PROFILE=notary-profile
-UNAME=$(shell uname)
+
+HOST_OS=$(shell uname | tr '[:upper:]' '[:lower:]')
+HOST_ARCH=$(shell uname -m | sed -e 's/^x86_64$$/amd64/' -e 's/^aarch64$$/arm64/')
+TARGET_OS?=$(HOST_OS)
+TARGET_ARCH?=$(HOST_ARCH)
 
 # GNU tar is named "gtar" on macOS (Homebrew) but is the default "tar" on Linux.
-ifeq ($(UNAME),Darwin)
+ifeq ($(HOST_OS),darwin)
 GTAR=gtar
 else
 GTAR=tar
 endif
 
-HOST_OS=$(shell uname | tr '[:upper:]' '[:lower:]')
-HOST_ARCH=$(shell uname -m | sed -e 's/^x86_64$$/amd64/' -e 's/^aarch64$$/arm64/')
-# Releases are always built on a machine running the target OS (Linux releases
-# on Linux, macOS releases on macOS); only the architecture may be cross
-# compiled. TARGET_OS defaults to the host OS but may be set explicitly so a
-# mismatched cross-OS build (e.g. TARGET_OS=linux on a darwin host) is rejected
-# by check-host-os instead of silently bundling the wrong toolchain.
-TARGET_OS?=$(HOST_OS)
-TARGET_ARCH?=$(HOST_ARCH)
+# Go distributions from go.dev, downloaded into go/: the host one runs the
+# builds and the target one is bundled into the package unmodified.
+GO_HOST=go/go$(GOVERSION).$(HOST_OS)-$(HOST_ARCH)
+GO_TARGET_TGZ=go/go$(GOVERSION).$(TARGET_OS)-$(TARGET_ARCH).tar.gz
 
-# Cross is non-empty when building for a different arch than the host.
-CROSS=$(filter-out $(HOST_ARCH),$(TARGET_ARCH))
+# gopls, goimports, dlv and extension_go are pure Go, so the host toolchain
+# cross-compiles them for every target.
+GO=CGO_ENABLED=0 GOOS=$(TARGET_OS) GOARCH=$(TARGET_ARCH) GOROOT=$(CURDIR)/$(GO_HOST) $(CURDIR)/$(GO_HOST)/bin/go
 
-# Native builds keep cgo on to match the production release binaries. Cross-arch
-# builds disable cgo so the Go binaries link without a target C toolchain.
-CGO_ENABLED=$(if $(CROSS),0,1)
+# The tree-sitter parser is C. Pin it to Rune's platform floors: macOS 13.3 and
+# glibc 2.28. zig cc cross-compiles it for Linux from any host.
+MACOS_MIN=13.3
+GLIBC_MIN=2.28
+ZIG_ARCH_amd64=x86_64
+ZIG_ARCH_arm64=aarch64
 
-# C compiler for the tree-sitter parser. On Linux a cross-arch build needs the
-# matching GNU cross toolchain (gcc-*-cross packages); native builds use gcc.
-# macOS builds a universal binary in one pass, so CC is unused there.
-GNU_TRIPLE_amd64=x86_64-linux-gnu
-GNU_TRIPLE_arm64=aarch64-linux-gnu
-CC=$(if $(CROSS),$(GNU_TRIPLE_$(TARGET_ARCH))-gcc,gcc)
+BLUECTL_CONFIG_ROOT=$(abspath deploy/bluectl)
+ENVS=prod staging
+PLATFORMS=darwin-arm64 darwin-amd64 linux-arm64 linux-amd64
+DIST_TARGETS=$(foreach env,$(ENVS),$(addprefix dist-$(env)-,$(PLATFORMS)))
+DIST_ALL_TARGETS=$(foreach env,$(ENVS),dist-$(env)-all)
 
-# extension_go imports ide/syntax and go-tree-sitter, so it must be built with
-# CGO enabled even for cross-arch releases (CGO_ENABLED=0 leaves tree-sitter
-# Parser/Tree/Query/Language symbols undefined). On macOS, clang cross-compiles
-# natively via -arch, so a same-OS cross-arch build only needs the target clang
-# arch flag. On Linux, use the matching GNU cross toolchain.
-CLANG_ARCH_amd64=x86_64
-CLANG_ARCH_arm64=arm64
-ifeq ($(HOST_OS),darwin)
-EXT_CGO_ENABLED=1
-EXT_CC=clang $(if $(CROSS),-arch $(CLANG_ARCH_$(TARGET_ARCH)),)
+# Fields of a dist target stem "<env>-<os>-<arch>".
+dist_env=$(word 1,$(subst -, ,$(1)))
+dist_os=$(word 2,$(subst -, ,$(1)))
+dist_arch=$(word 3,$(subst -, ,$(1)))
+dist_config=$(BLUECTL_CONFIG_ROOT)/$(call dist_env,$(1))/$(call dist_os,$(1))-$(call dist_arch,$(1))
+
+# Release version, the tag check-release-tag validates.
+VERSION=$(shell git describe --tags --dirty)
+
+.PHONY: default pkg check-release-tag clean $(DIST_TARGETS) $(DIST_ALL_TARGETS)
+default: $(TAR)
+
+go/%.tar.gz:
+	@mkdir -p go
+	wget -O $@.tmp https://go.dev/dl/$*.tar.gz
+	mv $@.tmp $@
+
+$(GO_HOST): | $(GO_HOST).tar.gz
+	rm -rf $@.tmp
+	mkdir -p $@.tmp
+	tar -xzf $(GO_HOST).tar.gz -C $@.tmp --strip-components=1
+	mv $@.tmp $@
+
+# pkg/ is rebuilt from scratch every time, so it never mixes platforms.
+pkg: | $(GO_HOST) $(GO_TARGET_TGZ)
+	rm -rf pkg
+	mkdir -p pkg
+	tar -xzf $(GO_TARGET_TGZ) -C pkg --strip-components=1
+	mkdir -p pkg/bin pkg/lib
+ifeq ($(TARGET_OS),darwin)
+	clang -o pkg/lib/tree-sitter.so -Itree-sitter-go/src tree-sitter-go/src/*.c -Os -bundle -arch arm64 -arch x86_64 -mmacosx-version-min=$(MACOS_MIN)
 else
-EXT_CGO_ENABLED=1
-EXT_CC=$(CC)
+	zig cc -target $(ZIG_ARCH_$(TARGET_ARCH))-linux-gnu.$(GLIBC_MIN) -o pkg/lib/tree-sitter.so -Itree-sitter-go/src tree-sitter-go/src/*.c -Os -shared -fPIC
 endif
+	cp tree-sitter-go/queries/tags.scm tree-sitter-go/queries/highlights.scm pkg/lib
+	cp nvim-treesitter/queries/go/indents.scm nvim-treesitter/queries/go/locals.scm pkg/lib
+	cp src/folds.scm pkg/lib
+	cp config.yaml pkg
+	$(GO) build -C tools/gopls -o $(CURDIR)/pkg/bin/gopls .
+	$(GO) build -C tools -o $(CURDIR)/pkg/bin/goimports ./cmd/goimports
+	$(GO) build -C delve -o $(CURDIR)/pkg/bin/dlv ./cmd/dlv
+	$(GO) build -C rune -o $(CURDIR)/pkg/bin/extension_go ./cmd/extension_go
 
-BLUECTL_CONFIG_ROOT := $(abspath deploy/bluectl)
-
-# Docker cross-compile: builds the full pkg/ bundle inside Docker for a target
-# arch, so no host GNU cross toolchain is required. Linux only.
-DOCKER_CROSS_DOCKERFILE := deploy/go-language/Dockerfile
-CROSS_OUTPUT_DIR := $(abspath target)
-
-# The bundled Go toolchain is OS-specific and cannot be cross-compiled across
-# operating systems: only the architecture may be cross compiled. Building a
-# Linux package on macOS (or vice versa) silently bundles the host OS toolchain,
-# which then fails on the target with a "go tool version" mismatch. Guard every
-# package build, not just the dist-* targets.
-.PHONY: check-host-os
-check-host-os:
-	@if [ "$(TARGET_OS)" != "$(HOST_OS)" ]; then \
-	  echo "error: cannot build a '$(TARGET_OS)' package on a '$(HOST_OS)' host; the Go toolchain is OS-specific. Build $(TARGET_OS) releases on a $(TARGET_OS) machine." >&2; \
-	  exit 1; \
-	fi
+$(TAR): pkg
+	cd pkg && $(GTAR) --no-xattrs --no-acls -czvf ../$(TAR) .
 
 # check-release-tag aborts before any build runs when HEAD does not carry a
-# publishable release tag (clean, canonical semver, actually tagged). Shared by
-# every dist-* target so a "-dirty" or untagged build can never be uploaded.
-.PHONY: check-release-tag
+# publishable release tag (clean, canonical semver, actually tagged).
 check-release-tag:
 	@./check-release-tag.sh
 
-DIST_TARGETS := \
-	dist-prod-darwin-arm64 dist-prod-darwin-amd64 \
-	dist-prod-linux-arm64  dist-prod-linux-amd64  \
-	dist-staging-darwin-arm64 dist-staging-darwin-amd64 \
-	dist-staging-linux-arm64  dist-staging-linux-amd64
-
-# Docker cross-compile dist targets (Linux only): build the bundle inside
-# Docker for a possibly-different arch, then upload via dist.sh.
-CROSS_DIST_TARGETS := \
-	dist-prod-linux-arm64-cross  dist-prod-linux-amd64-cross \
-	dist-staging-linux-arm64-cross dist-staging-linux-amd64-cross
-
-.PHONY: $(DIST_TARGETS) $(CROSS_DIST_TARGETS) linux-cross-compile clean sign notarize notary-credentials
-default: $(TAR)
-
-# Build toolchain (host os/arch): runs the compiler. Cross-arch builds set
-# GOARCH on top of this.
-go:
-	wget -O go-build.tar.gz https://go.dev/dl/go$(GOVERSION).$(HOST_OS)-$(HOST_ARCH).tar.gz
-	tar -xzf go-build.tar.gz
-	rm -f go-build.tar.gz
-
-# Target toolchain (target arch): bundled into the release unmodified. Only
-# downloaded when cross-arch building; for native builds we bundle go/ directly.
-go-target: | go check-host-os
-ifeq ($(CROSS),)
-	cp -R go/ go-target
-else
-	wget -O go-target.tar.gz https://go.dev/dl/go$(GOVERSION).$(TARGET_OS)-$(TARGET_ARCH).tar.gz
-	mkdir -p go-target
-	tar -xzf go-target.tar.gz -C go-target --strip-components=1
-	rm -f go-target.tar.gz
-endif
-
-$(LIB): $(SRC) go-target | check-host-os
-	cp -R go-target/ pkg
-	@mkdir -p pkg/bin pkg/lib
-ifeq ($(HOST_OS),darwin)
-	cd tree-sitter-go && cc -o parser.so -I./src src/*.c -Os -bundle -arch arm64 -arch x86_64
-else
-	cd tree-sitter-go && $(CC) -o parser.so -I./src src/*.c -Os -shared -fPIC
-endif
-	cp tree-sitter-go/parser.so pkg/lib/tree-sitter.so
-	cp tree-sitter-go/queries/tags.scm tree-sitter-go/queries/highlights.scm pkg/lib
-	cp nvim-treesitter/queries/go/indents.scm pkg/lib
-	cp nvim-treesitter/queries/go/locals.scm pkg/lib
-	cp src/folds.scm pkg/lib
-	cd tools/gopls && CGO_ENABLED=$(CGO_ENABLED) GOOS=$(TARGET_OS) GOARCH=$(TARGET_ARCH) GOROOT=$(PWD)/go $(PWD)/go/bin/go build -o $(PWD)/pkg/bin/gopls .
-	cd tools && CGO_ENABLED=$(CGO_ENABLED) GOOS=$(TARGET_OS) GOARCH=$(TARGET_ARCH) GOROOT=../go ../go/bin/go build -o $(PWD)/pkg/bin/goimports ./cmd/goimports
-	cp config.yaml pkg
-	cd delve && CGO_ENABLED=$(CGO_ENABLED) GOOS=$(TARGET_OS) GOARCH=$(TARGET_ARCH) GOROOT=$(PWD)/go $(PWD)/go/bin/go build -o $(PWD)/pkg/bin/dlv ./cmd/dlv
-	cd rune && CGO_ENABLED=$(EXT_CGO_ENABLED) CC="$(EXT_CC)" GOOS=$(TARGET_OS) GOARCH=$(TARGET_ARCH) GOROOT=$(PWD)/go $(PWD)/go/bin/go build -o $(PWD)/pkg/bin/extension_go ./cmd/extension_go
-
-ifeq ($(UNAME),Darwin)
-sign: $(LIB)
-	codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" pkg/bin/go
-	codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" pkg/bin/gopls
-	codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" pkg/bin/goimports
-	codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" pkg/bin/dlv
-	codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" pkg/bin/extension_go
-	codesign --force --options runtime --sign "$(CODESIGN_IDENTITY)" pkg/lib/tree-sitter.so
-
-$(NOTARIZE_ZIP): sign
-	zip $(NOTARIZE_ZIP) pkg/bin/go pkg/bin/gopls pkg/bin/goimports pkg/bin/dlv pkg/bin/extension_go pkg/lib/tree-sitter.so
-
-notarize: $(NOTARIZE_ZIP)
-	xcrun notarytool submit $(NOTARIZE_ZIP) --keychain-profile "$(NOTARY_PROFILE)" --wait
-else
-sign: $(LIB)
-	@echo "Skipping codesign (not on macOS)"
-
-notarize: sign
-	@echo "Skipping notarization (not on macOS)"
-endif
-
-$(TAR): $(LIB) sign
-	cd pkg && $(GTAR) --no-xattrs --no-acls -czvf ../$(TAR) .
-
-# dist-<env>-<os>-<arch>: build (cross compiling the architecture when it
-# differs from the host), sign/notarize, and upload to the bluectl project-id
-# pinned by deploy/bluectl/<env>/<os>-<arch>/config. Pattern stem is
-# <env>-<os>-<arch>, e.g. "prod-darwin-arm64".
-#
-# The target OS must match the host OS: Linux releases are built on Linux and
-# macOS releases on macOS. Only the architecture may be cross compiled. The
-# build is driven through a recursive make so TARGET_ARCH is set before the
-# $(TAR) prerequisite chain is evaluated.
-# check-release-tag is listed first so the tag is validated before any build,
-# sign, or notarize work runs.
+# dist-<env>-<os>-<arch> builds the package and uploads it with the bluectl
+# config pinned in deploy/bluectl/<env>/<os>-<arch>. It skips platforms that
+# already have this version, so an interrupted dist-<env>-all can be rerun.
+# darwin packages must be built on macOS (clang compiles the parser); linux
+# packages build on any host.
 $(DIST_TARGETS): dist-%: check-release-tag
-	@env=$$(echo $* | cut -d- -f1); \
-	 os=$$(echo $*  | cut -d- -f2); \
-	 arch=$$(echo $* | cut -d- -f3); \
-	 if [ "$$os" != "$(HOST_OS)" ]; then \
-	   echo "error: $@ targets OS '$$os' but host OS is '$(HOST_OS)'; build $$os releases on a $$os machine" >&2; \
-	   exit 1; \
-	 fi; \
-	 $(MAKE) clean; \
-	 $(MAKE) notarize $(TAR) TARGET_OS=$$os TARGET_ARCH=$$arch; \
-	 BLUECTL_CONFIG_DIR=$(BLUECTL_CONFIG_ROOT)/$$env/$$os-$$arch \
-	 BLUE_TARGET_OS=$$os BLUE_TARGET_ARCH=$$arch ./dist.sh
+	@if bluectl -c $(call dist_config,$*) release describe go $(VERSION) >/dev/null 2>&1; then \
+	  echo "go $(VERSION) is already released for $*; skipping"; \
+	else \
+	  $(MAKE) $(TAR) TARGET_OS=$(call dist_os,$*) TARGET_ARCH=$(call dist_arch,$*) && \
+	  BLUECTL_CONFIG_DIR=$(call dist_config,$*) \
+	  BLUE_TARGET_OS=$(call dist_os,$*) BLUE_TARGET_ARCH=$(call dist_arch,$*) ./dist.sh; \
+	fi
 
-# linux-cross-compile builds the full pkg/ bundle inside Docker for TARGET_ARCH,
-# dropping go.tar.gz into $(CROSS_OUTPUT_DIR). No host GNU cross toolchain is
-# required. GIT_SSH_KEY must be exported for private Go module access.
-linux-cross-compile:
-	@rm -rf $(CROSS_OUTPUT_DIR)
-	@mkdir -p $(CROSS_OUTPUT_DIR)
-	docker buildx build --rm \
-		-f $(DOCKER_CROSS_DOCKERFILE) \
-		--platform linux/$(TARGET_ARCH) \
-		--build-arg GOVERSION=$(GOVERSION) \
-		--build-arg GIT_SSH_KEY="$$GIT_SSH_KEY" \
-		--build-arg RELEASE_TAR=$(TAR) \
-		--output type=local,dest=$(CROSS_OUTPUT_DIR) \
-		.
-
-# dist-<env>-linux-<arch>-cross mirror the native dist-<env>-linux-<arch>
-# targets but build the bundle through the Docker cross-compile path instead of
-# the host toolchain. Linux only; darwin cannot be built in Linux Docker.
-# check-release-tag is listed first so the tag is validated before any Docker
-# cross-compile work runs.
-$(CROSS_DIST_TARGETS): dist-%-cross: check-release-tag
-	@env=$$(echo $*  | cut -d- -f1); \
-	 os=$$(echo $*   | cut -d- -f2); \
-	 arch=$$(echo $* | cut -d- -f3); \
-	 if [ "$$os" != "linux" ]; then \
-	   echo "error: $@ is Linux-only (docker cross); use dist-$$env-$$os-$$arch for $$os" >&2; \
-	   exit 1; \
-	 fi; \
-	 $(MAKE) clean; \
-	 $(MAKE) linux-cross-compile TARGET_OS=linux TARGET_ARCH=$$arch; \
-	 BLUECTL_CONFIG_DIR=$(BLUECTL_CONFIG_ROOT)/$$env/$$os-$$arch \
-	 BLUE_TARGET_OS=linux BLUE_TARGET_ARCH=$$arch \
-	 BLUE_RELEASE_TAR=$(CROSS_OUTPUT_DIR)/$(TAR) ./dist.sh
-
-notary-credentials:
-	xcrun notarytool store-credentials "$(NOTARY_PROFILE)" --team-id "YYZRWD888J"
+# dist-<env>-all publishes every platform for <env>, one after another.
+$(DIST_ALL_TARGETS): dist-%-all: check-release-tag
+	for platform in $(PLATFORMS); do $(MAKE) dist-$*-$$platform || exit 1; done
 
 clean:
-	rm -rf go
-	rm -rf go-target
-	rm -rf $(TAR)
-	rm -rf $(NOTARIZE_ZIP)
-	rm -rf $(CROSS_OUTPUT_DIR)
-	rm -rf pkg/
-	rm -rf go/bin/
+	rm -rf go pkg $(TAR)
