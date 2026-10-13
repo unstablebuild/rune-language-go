@@ -5,11 +5,12 @@
 # cannot also drop its check.
 #
 # Guards:
-#   1. macOS targets: Rune.app can load the package. Every Mach-O file is
-#      signed by the $TEAM_ID Developer ID, and tree-sitter.so loads into a
-#      process signed like Rune.app (scripts/macos-signing.sh check). Rune runs
-#      with library validation, so an ad-hoc signed tree-sitter.so fails to
-#      load with "different Team IDs", as in v1.27.1-ub.2 and ub.3.
+#   1. macOS targets: Rune.app can load the package. tree-sitter.so is signed
+#      by the $TEAM_ID Developer ID and loads into a process signed like
+#      Rune.app, and every Mach-O file is intact and validly signed
+#      (scripts/macos-signing.sh check). Rune runs with library validation, so
+#      an ad-hoc signed tree-sitter.so fails to load with "different Team
+#      IDs", as in v1.27.1-ub.2 and ub.3.
 set -euo pipefail
 
 TAR="${TAR:-go.tar.gz}"

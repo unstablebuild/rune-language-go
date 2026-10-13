@@ -3,10 +3,10 @@ GOVERSION=1.27.1
 
 # Rune's macOS app runs with the hardened runtime and only loads libraries
 # signed by its own team: an ad-hoc signed tree-sitter.so fails to load. darwin
-# packages sign every Mach-O file with the Developer ID
-# (scripts/macos-signing.sh), and scripts/test.sh checks the tarball. Packages
-# are not notarized: Rune installs them without the quarantine attribute, so
-# Gatekeeper never assesses them.
+# packages sign tree-sitter.so with the Developer ID (scripts/macos-signing.sh),
+# and scripts/test.sh checks the tarball. Packages are not notarized: Rune
+# installs them without the quarantine attribute, so Gatekeeper never assesses
+# them.
 TEAM_ID=YYZRWD888J
 CODESIGN_IDENTITY=Developer ID Application: Unstable Build, LLC. ($(TEAM_ID))
 MACOS_SIGNING=TEAM_ID=$(TEAM_ID) CODESIGN_IDENTITY="$(CODESIGN_IDENTITY)" \
@@ -91,8 +91,9 @@ endif
 	$(GO) build -C rune -o $(CURDIR)/pkg/bin/extension_go ./cmd/extension_go
 
 ifeq ($(TARGET_OS),darwin)
-# Every Mach-O file in pkg/, found by scanning, so a new binary is signed too.
-# That includes the Go distribution's own bin/ and pkg/tool/ binaries.
+# Only tree-sitter.so, the one file Rune loads into its own process. The Go
+# distribution keeps Google's signatures and the tools built here keep the Go
+# linker's (scripts/macos-signing.sh).
 sign: pkg
 	$(MACOS_SIGNING) sign pkg
 

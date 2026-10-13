@@ -17,10 +17,12 @@ Rune maintainers.
    Makefile downloads the pinned Go toolchains itself. Install `wget`, `zig`
    (it compiles the Linux tree-sitter parser), `bluectl`, and tar (GNU `gtar`
    on macOS). macOS also needs the Xcode command line tools, the Developer ID
-   signing identity. Rune on macOS only loads a tree-sitter parser signed by the
-   same team, so `make test` fails a macOS tarball unless every Mach-O file is
-   signed by that team and `tree-sitter.so` loads into a process signed like
-   Rune.app (`scripts/macos-signing.sh`, shared by every language repo).
+   signing identity. Rune on macOS only loads a tree-sitter parser signed by
+   the same team, so the build signs `tree-sitter.so`; the other binaries run
+   as separate processes and keep their own signatures. `make test` fails a
+   macOS tarball unless `tree-sitter.so` is signed by that team and loads into
+   a process signed like Rune.app, and every binary is intact and validly
+   signed (`scripts/macos-signing.sh`, shared by every language repo).
    Packages are not notarized: Rune installs them without the quarantine
    attribute, so Gatekeeper never assesses them.
 2. **Prepare the release.** Fetch tags and submodules
