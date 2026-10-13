@@ -1,5 +1,5 @@
 TAR=go.tar.gz
-GOVERSION=1.27.1
+GOVERSION=1.27.2
 
 # Rune's macOS app runs with the hardened runtime and only loads libraries
 # signed by its own team: an ad-hoc signed tree-sitter.so fails to load. darwin
