@@ -88,7 +88,8 @@ endif
 	$(GO) build -C tools/gopls -o $(CURDIR)/pkg/bin/gopls .
 	$(GO) build -C tools -o $(CURDIR)/pkg/bin/goimports ./cmd/goimports
 	$(GO) build -C delve -o $(CURDIR)/pkg/bin/dlv ./cmd/dlv
-	$(GO) build -C rune -o $(CURDIR)/pkg/bin/extension_go ./cmd/extension_go
+	$(GO) build -C rune -ldflags="-X unstable.build/rune/internal/debug.Tag=$(VERSION)" \
+		-o $(CURDIR)/pkg/bin/extension_go ./cmd/extension_go
 
 ifeq ($(TARGET_OS),darwin)
 # Only tree-sitter.so, the one file Rune loads into its own process. The Go
